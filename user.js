@@ -4,23 +4,40 @@
  * Version: 3.0 - Cleaned up and optimized
  */
 
-// Configuration - Set to true to enable debug logging
-const DEBUG_MODE = false;
+// ============================================================================
+// CONFIGURATION - Modify these values for your deployment
+// ============================================================================
+
+// AI Service Configuration
+const AI_SERVICE_CONFIG = {
+    // WebSocket URL for the AI service (change this for production)
+    websocketUrl: 'ws://localhost:8000/api/ws/speech',
+    
+    // Auto-connect to AI service on page load
+    autoConnect: true,
+    
+    // Enable debug logging (set to false for production)
+    debugMode: false
+};
+
+// ============================================================================
+// DEBUG CONFIGURATION
+// ============================================================================
 
 // Debug logging utility
 const debug = {
-    log: (...args) => DEBUG_MODE && console.log('🔍 DEBUG:', ...args),
-    error: (...args) => DEBUG_MODE && console.error('🔍 DEBUG ERROR:', ...args),
-    warn: (...args) => DEBUG_MODE && console.warn('🔍 DEBUG WARN:', ...args)
+    log: (...args) => AI_SERVICE_CONFIG.debugMode && console.log('🔍 DEBUG:', ...args),
+    error: (...args) => AI_SERVICE_CONFIG.debugMode && console.error('🔍 DEBUG ERROR:', ...args),
+    warn: (...args) => AI_SERVICE_CONFIG.debugMode && console.warn('🔍 DEBUG WARN:', ...args)
 };
 
 // Real-time AI integration class - self-contained
 class StorylineRealtimeAI {
     constructor(config = {}) {
         this.config = {
-            websocketUrl: config.websocketUrl || 'ws://localhost:8000/api/ws/speech',
-            autoConnect: config.autoConnect !== false,
-            debugMode: config.debugMode || DEBUG_MODE,
+            websocketUrl: config.websocketUrl || AI_SERVICE_CONFIG.websocketUrl,
+            autoConnect: config.autoConnect !== false ? AI_SERVICE_CONFIG.autoConnect : false,
+            debugMode: config.debugMode !== undefined ? config.debugMode : AI_SERVICE_CONFIG.debugMode,
             ...config
         };
         
@@ -677,7 +694,7 @@ class StorylineRealtimeAI {
 let storylineAI = null;
 
 // Global functions for troubleshooting (only available in debug mode)
-if (DEBUG_MODE) {
+if (AI_SERVICE_CONFIG.debugMode) {
     window.clearStorylineResumeData = function() {
         console.log('Global function called to clear resume data');
         if (storylineAI) {
@@ -717,9 +734,9 @@ window.InitExecuteScripts = function() {
 
     // Initialize real-time AI integration
     storylineAI = new StorylineRealtimeAI({
-        websocketUrl: 'ws://localhost:8000/api/ws/speech',
-        autoConnect: true,
-        debugMode: DEBUG_MODE
+        websocketUrl: AI_SERVICE_CONFIG.websocketUrl,
+        autoConnect: AI_SERVICE_CONFIG.autoConnect,
+        debugMode: AI_SERVICE_CONFIG.debugMode
     });
 
     // Store player reference in the AI instance

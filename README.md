@@ -99,6 +99,29 @@ The system integrates with Articulate Storyline through the JavaScript code in y
 2. **Configure the WebSocket URL** in the script to point to your server
 3. **Use the provided methods** to start/stop recording and get feedback
 
+### Configuration
+The `user.js` file includes a configuration section at the top that you can modify:
+
+```javascript
+// AI Service Configuration
+const AI_SERVICE_CONFIG = {
+    // WebSocket URL for the AI service (change this for production)
+    websocketUrl: 'ws://localhost:8000/api/ws/speech',
+    
+    // Auto-connect to AI service on page load
+    autoConnect: true,
+    
+    // Enable debug logging (set to false for production)
+    debugMode: false
+};
+```
+
+**For Production Deployment:**
+- Change `websocketUrl` to your production server (e.g., `wss://yourdomain.com/api/ws/speech`)
+- Use `wss://` (secure WebSocket) for HTTPS sites
+- Set `debugMode: false` for production
+- Ensure your server is accessible from your Storyline hosting environment
+
 ### Features in user.js
 - **Real-time Speech Recording**: Live audio capture and streaming
 - **AI Response Playback**: Seamless audio feedback from the AI
