@@ -6,7 +6,6 @@ This application provides WebSocket endpoints for streaming audio data to and fr
 import os
 import logging
 from fastapi import FastAPI, Request, UploadFile, Form
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -138,40 +137,36 @@ async def legacy_process_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
-# Mount static files with cache-busting headers
-from fastapi.responses import FileResponse
-import os
-
-@app.get("/static/{filename:path}")
-async def serve_static(filename: str):
-    """Serve static files with cache-busting headers."""
-    file_path = f"app/static/{filename}"
-    if os.path.exists(file_path):
-        return FileResponse(
-            file_path,
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
-        )
-    return {"error": "File not found"}, 404
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    """Serve the main HTML page."""
-    try:
-        with open("app/static/index.html", "r") as f:
-            html_content = f.read()
-        return HTMLResponse(content=html_content, status_code=200)
-    except FileNotFoundError:
-        return HTMLResponse(
-            content="<h1>Welcome to IAC Realtime AI</h1><p>Static files not found. Please ensure the static directory exists.</p>",
-            status_code=200
-        )
+    """Serve a simple welcome page for the API."""
+    return HTMLResponse(
+        content="""
+        <html>
+            <head>
+                <title>IAC Realtime AI - De-escalation Training</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                    h1 { color: #333; }
+                    p { color: #666; }
+                    .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+                </style>
+            </head>
+            <body>
+                <h1>🚀 IAC Realtime AI</h1>
+                <p>De-escalation Training System</p>
+                <div class="endpoint">
+                    <strong>WebSocket Endpoint:</strong> ws://localhost:8000/api/ws/speech
+                </div>
+                <div class="endpoint">
+                    <strong>Health Check:</strong> <a href="/health">/health</a>
+                </div>
+                <p><em>This system is designed to integrate with Articulate Storyline courses.</em></p>
+            </body>
+        </html>
+        """,
+        status_code=200
+    )
 
 @app.get("/health")
 async def health_check():
