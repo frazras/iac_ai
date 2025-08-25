@@ -90,10 +90,22 @@ The system integrates with Articulate Storyline through the JavaScript code in y
 - Seamless integration with Storyline variables
 - Audio feedback and coaching
 
+### Included Files
+- **`user.js`** - Complete Storyline integration script with real-time AI capabilities
+- **`storyline_integration.js`** - Alternative integration script (if needed)
+
 ### Usage in Storyline
-1. The integration script is already included in your `user.js`
-2. Configure the WebSocket URL to point to your server
-3. Use the provided methods to start/stop recording and get feedback
+1. **Copy `user.js`** from this project to your Storyline course's `story_content` folder
+2. **Configure the WebSocket URL** in the script to point to your server
+3. **Use the provided methods** to start/stop recording and get feedback
+
+### Features in user.js
+- **Real-time Speech Recording**: Live audio capture and streaming
+- **AI Response Playback**: Seamless audio feedback from the AI
+- **Grade Management**: Automatic handling of training scores (1-10 scale)
+- **Resume Session Handling**: Smart detection and cleanup of old session data
+- **Debug Mode**: Configurable logging for troubleshooting
+- **Fallback Recording**: Backup recording method if AI service fails
 
 ## 🏗️ Architecture
 
