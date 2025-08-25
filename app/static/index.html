@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAC Realtime AI - Speech to Speech</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #333;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: #4a5568;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 1rem;
+        }
+
+        .controls {
+            margin: 2rem 0;
+        }
+
+        .record-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            min-width: 140px;
+        }
+
+        .record-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .record-btn:active {
+            transform: translateY(0);
+        }
+
+        .record-btn.recording {
+            background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .status {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status.info {
+            background: rgba(66, 153, 225, 0.1);
+            color: #2b6cb0;
+            border: 1px solid rgba(66, 153, 225, 0.3);
+        }
+
+        .status.success {
+            background: rgba(72, 187, 120, 0.1);
+            color: #2f855a;
+            border: 1px solid rgba(72, 187, 120, 0.3);
+        }
+
+        .status.error {
+            background: rgba(229, 62, 62, 0.1);
+            color: #c53030;
+            border: 1px solid rgba(229, 62, 62, 0.3);
+        }
+
+        .status.recording {
+            background: rgba(237, 137, 54, 0.1);
+            color: #c05621;
+            border: 1px solid rgba(237, 137, 54, 0.3);
+        }
+
+        .volume-indicator {
+            margin: 1rem 0;
+            height: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .volume-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78, #38a169, #2f855a);
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 10px;
+        }
+
+        .audio-controls {
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .audio-controls.visible {
+            display: block;
+        }
+
+        .audio-player {
+            width: 100%;
+            margin-top: 1rem;
+            border-radius: 10px;
+        }
+
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 IAC Realtime AI</h1>
+            <p>Real-time speech-to-speech conversation with AI</p>
+        </div>
+
+        <div class="controls">
+            <button id="recordBtn" class="record-btn">Start Conversation</button>
+        </div>
+
+        <div class="volume-indicator">
+            <div id="volumeBar" class="volume-bar"></div>
+        </div>
+
+        <div id="status" class="status info">
+            Click "Start Conversation" to begin talking with the AI
+        </div>
+
+        <div id="audioControls" class="audio-controls">
+            <audio id="responseAudio" class="audio-player" controls>
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+
+        <div class="footer">
+            <p>Powered by OpenAI Realtime API • Built with FastAPI & WebSockets</p>
+        </div>
+    </div>
+
+    <script>
+        class RealtimeAIClient {
+                    constructor() {
+            this.websocket = null;
+            this.mediaRecorder = null;
+            this.audioStream = null;
+            this.audioContext = null;
+            this.analyser = null;
+            this.isRecording = false;
+            this.isConnected = false;
+            this.audioChunks = [];
+            
+            // Audio playback queue system
+            this.audioQueue = [];
+            this.isPlaying = false;
+            this.currentAudioContext = null;
+            
+            // Feedback prevention system
+            this.isAISpeaking = false;
+            this.recordingPaused = false;
+            
+            // UI elements
+            this.recordBtn = document.getElementById('recordBtn');
+            this.status = document.getElementById('status');
+            this.volumeBar = document.getElementById('volumeBar');
+            this.audioControls = document.getElementById('audioControls');
+            this.responseAudio = document.getElementById('responseAudio');
+            
+            this.setupEventListeners();
+        }
+            
+            setupEventListeners() {
+                this.recordBtn.addEventListener('click', () => this.toggleRecording());
+                
+                // Handle page unload
+                window.addEventListener('beforeunload', () => this.cleanup());
+                
+                // Handle audio playback
+                this.responseAudio.addEventListener('ended', () => {
+                    this.audioControls.classList.remove('visible');
+                });
+            }
+            
+            async toggleRecording() {
+                if (!this.isRecording) {
+                    await this.startRecording();
+                } else {
+                    await this.stopRecording();
+                }
+            }
+            
+            async startRecording() {
+                try {
+                    console.log('🎤 Starting recording process...');
+                    this.updateStatus('info', 'Requesting microphone access...');
+                    
+                    // Get user media with specific constraints for OpenAI
+                    console.log('📱 Requesting microphone access...');
+                    this.audioStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            channelCount: 1,
+                            sampleRate: 24000,  // OpenAI expects 24kHz
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    console.log('✅ Microphone access granted');
+                    
+                    // Connect to WebSocket first
+                    console.log('🔌 Connecting to WebSocket...');
+                    await this.connectWebSocket();
+                    console.log('✅ WebSocket connected');
+                    
+                    // Setup audio analysis for volume indicator
+                    console.log('📊 Setting up audio analysis...');
+                    this.setupAudioAnalysis();
+                    
+                    // Setup raw audio capture (not MediaRecorder)
+                    console.log('🎵 Setting up raw audio capture...');
+                    this.setupMediaRecorder(); // This now calls setupRawAudioCapture
+                    
+                    // Start recording
+                    this.isRecording = true;
+                    console.log('✅ Recording started successfully');
+                    
+                    // Update UI
+                    this.recordBtn.textContent = 'Stop Conversation';
+                    this.recordBtn.classList.add('recording');
+                    this.updateStatus('recording', '🎤 Recording... Speak to the AI');
+                    
+                } catch (error) {
+                    console.error('❌ Error starting recording:', error);
+                    this.updateStatus('error', `Failed to start recording: ${error.message}`);
+                }
+            }
+            
+            async stopRecording() {
+                try {
+                    console.log('🛑 Stopping recording...');
+                    this.isRecording = false;
+                    
+                    // Stop script processor
+                    if (this.scriptProcessor) {
+                        this.scriptProcessor.disconnect();
+                        this.scriptProcessor = null;
+                        console.log('✅ Script processor disconnected');
+                    }
+                    
+                    // Close audio context
+                    if (this.audioContext && this.audioContext.state !== 'closed') {
+                        await this.audioContext.close();
+                        this.audioContext = null;
+                        console.log('✅ Audio context closed');
+                    }
+                    
+                    // Stop audio stream
+                    if (this.audioStream) {
+                        this.audioStream.getTracks().forEach(track => {
+                            track.stop();
+                            console.log('✅ Audio track stopped:', track.kind);
+                        });
+                        this.audioStream = null;
+                    }
+                    
+                    // Close WebSocket
+                    if (this.websocket) {
+                        this.websocket.close();
+                        this.websocket = null;
+                        this.isConnected = false;
+                        console.log('✅ WebSocket closed');
+                    }
+                    
+                    // Update UI
+                    this.recordBtn.textContent = 'Start Conversation';
+                    this.recordBtn.classList.remove('recording');
+                    this.volumeBar.style.width = '0%';
+                    this.updateStatus('info', 'Conversation ended. Click to start again.');
+                    
+                    console.log('✅ Recording stopped successfully');
+                    
+                } catch (error) {
+                    console.error('❌ Error stopping recording:', error);
+                    this.updateStatus('error', `Error stopping recording: ${error.message}`);
+                }
+            }
+            
+            async connectWebSocket() {
+                return new Promise((resolve, reject) => {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/api/ws/speech`;
+                    
+                    this.updateStatus('info', 'Connecting to AI service...');
+                    
+                    this.websocket = new WebSocket(wsUrl);
+                    this.websocket.binaryType = 'arraybuffer';
+                    
+                    this.websocket.onopen = () => {
+                        console.log('✅ WebSocket connected successfully');
+                        this.isConnected = true;
+                        this.updateStatus('success', 'Connected to AI service');
+                        resolve();
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        console.log('📨 WebSocket message received:', {
+                            type: typeof event.data,
+                            size: event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length,
+                            isArrayBuffer: event.data instanceof ArrayBuffer
+                        });
+                        
+                        if (event.data instanceof ArrayBuffer) {
+                            console.log('🎵 Received audio response:', event.data.byteLength, 'bytes');
+                            this.handleAudioResponse(event.data);
+                        } else {
+                            // Handle text messages (errors, etc.)
+                            try {
+                                const message = JSON.parse(event.data);
+                                console.log('📝 Received text message:', message);
+                                if (message.error) {
+                                    console.error('❌ AI Service Error:', message.error);
+                                    this.updateStatus('error', `AI Service Error: ${message.error}`);
+                                }
+                            } catch (e) {
+                                console.log('📄 Received non-JSON text message:', event.data);
+                            }
+                        }
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        console.error('❌ WebSocket error:', error);
+                        this.updateStatus('error', 'Connection error to AI service');
+                        reject(error);
+                    };
+                    
+                    this.websocket.onclose = (event) => {
+                        console.log('🔌 WebSocket closed:', {
+                            code: event.code,
+                            reason: event.reason,
+                            wasClean: event.wasClean
+                        });
+                        this.isConnected = false;
+                        if (this.isRecording) {
+                            this.updateStatus('error', 'Connection to AI service lost');
+                        }
+                    };
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        if (!this.isConnected) {
+                            reject(new Error('Connection timeout'));
+                        }
+                    }, 10000);
+                });
+            }
+            
+            setupMediaRecorder() {
+                console.log('Setting up media recorder...');
+                
+                // We need to process raw audio data, not use MediaRecorder
+                // which compresses the audio. OpenAI expects raw PCM16 at 24kHz
+                this.setupRawAudioCapture();
+            }
+            
+            setupRawAudioCapture() {
+                console.log('Setting up raw audio capture for OpenAI Realtime API...');
+                
+                // Create audio worklet for raw audio processing
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 24000 // OpenAI expects 24kHz
+                });
+                
+                console.log('Audio context created with sample rate:', this.audioContext.sampleRate);
+                
+                const source = this.audioContext.createMediaStreamSource(this.audioStream);
+                
+                // Create a script processor to capture raw audio data
+                const bufferSize = 4096;
+                this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+                
+                this.scriptProcessor.onaudioprocess = (event) => {
+                    if (this.isRecording && this.isConnected) {
+                        const inputBuffer = event.inputBuffer;
+                        const inputData = inputBuffer.getChannelData(0);
+                        
+                        // Convert float32 to int16 (PCM16)
+                        const pcm16Data = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            // Clamp and convert to 16-bit signed integer
+                            const sample = Math.max(-1, Math.min(1, inputData[i]));
+                            pcm16Data[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                        }
+                        
+                        // Send raw PCM16 data
+                        this.sendAudioChunk(pcm16Data.buffer);
+                    }
+                };
+                
+                // Connect the audio graph
+                source.connect(this.scriptProcessor);
+                this.scriptProcessor.connect(this.audioContext.destination);
+                
+                console.log('Raw audio capture setup complete');
+            }
+            
+            sendAudioChunk(audioBuffer) {
+                if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                    console.log(`Sending audio chunk: ${audioBuffer.byteLength} bytes`);
+                    this.websocket.send(audioBuffer);
+                } else {
+                    console.warn('WebSocket not ready, skipping audio chunk');
+                }
+            }
+            
+            setupAudioAnalysis() {
+                console.log('Setting up audio analysis...');
+                
+                // Use the existing audio context if available
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                this.analyser = this.audioContext.createAnalyser();
+                const source = this.audioContext.createMediaStreamSource(this.audioStream);
+                source.connect(this.analyser);
+                
+                this.analyser.fftSize = 256;
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                console.log('Audio analysis setup complete');
+                
+                const updateVolume = () => {
+                    if (this.isRecording) {
+                        this.analyser.getByteFrequencyData(dataArray);
+                        
+                        // Calculate average volume
+                        let sum = 0;
+                        for (let i = 0; i < bufferLength; i++) {
+                            sum += dataArray[i];
+                        }
+                        const average = sum / bufferLength;
+                        const percentage = (average / 255) * 100;
+                        
+                        this.volumeBar.style.width = `${percentage}%`;
+                        
+                        requestAnimationFrame(updateVolume);
+                    }
+                };
+                
+                updateVolume();
+            }
+            
+            handleAudioResponse(audioBuffer) {
+                try {
+                    console.log('🎵 [NEW VERSION 2.0] Processing audio response:', audioBuffer.byteLength, 'bytes');
+                    console.log('🔧 This is the enhanced audio handler with queue-based playback');
+                    
+                    // Add to audio queue instead of playing immediately
+                    this.audioQueue.push(audioBuffer);
+                    console.log(`📋 Audio added to queue. Queue length: ${this.audioQueue.length}`);
+                    
+                    // Start playing if not already playing
+                    if (!this.isPlaying) {
+                        this.processAudioQueue();
+                    }
+                    
+                    return; // Skip the old playback logic
+                    
+                    // Try different audio formats that OpenAI might send
+                    const audioFormats = [
+                        { type: 'audio/mpeg', extension: 'mp3' },
+                        { type: 'audio/wav', extension: 'wav' },
+                        { type: 'audio/ogg', extension: 'ogg' },
+                        { type: 'audio/mp4', extension: 'm4a' },
+                        { type: 'audio/webm', extension: 'webm' }
+                    ];
+                    
+                    let audioBlob = null;
+                    let audioUrl = null;
+                    
+                    // Try to create a blob with the received data
+                    for (const format of audioFormats) {
+                        try {
+                            audioBlob = new Blob([audioBuffer], { type: format.type });
+                            audioUrl = URL.createObjectURL(audioBlob);
+                            console.log('✅ Created audio blob with format:', format.type);
+                            break;
+                        } catch (e) {
+                            console.log('❌ Failed format:', format.type, e.message);
+                        }
+                    }
+                    
+                    if (!audioBlob || !audioUrl) {
+                        // Fallback: try with no specific type
+                        audioBlob = new Blob([audioBuffer]);
+                        audioUrl = URL.createObjectURL(audioBlob);
+                        console.log('🔄 Using fallback blob format');
+                    }
+                    
+                    // Set audio source and load
+                    this.responseAudio.src = audioUrl;
+                    this.responseAudio.load();
+                    this.audioControls.classList.add('visible');
+                    
+                    console.log('🎧 Audio element loaded, attempting playback...');
+                    
+                    // Auto-play the response
+                    this.responseAudio.play().then(() => {
+                        console.log('✅ Audio playback started successfully');
+                        this.updateStatus('success', '🔊 AI is responding...');
+                    }).catch(error => {
+                        console.error('❌ Audio playback error:', error);
+                        this.updateStatus('error', `Failed to play audio: ${error.message}`);
+                        
+                        // Try alternative playback method
+                        this.tryAlternativePlayback(audioBuffer);
+                    });
+                    
+                    // Clean up object URL after playback
+                    this.responseAudio.addEventListener('ended', () => {
+                        console.log('✅ Audio playback completed');
+                        URL.revokeObjectURL(audioUrl);
+                        this.updateStatus('recording', '🎤 Continue conversation...');
+                    }, { once: true });
+                    
+                } catch (error) {
+                    console.error('❌ Error handling audio response:', error);
+                    this.updateStatus('error', 'Failed to process audio response');
+                }
+            }
+            
+            tryAlternativePlayback(audioBuffer) {
+                console.log('🔄 Trying alternative playback method...');
+                
+                try {
+                    // Create a new audio context and decode the audio
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    audioContext.decodeAudioData(audioBuffer).then(decodedBuffer => {
+                        console.log('✅ Audio decoded successfully, creating buffer source');
+                        
+                        // Create buffer source and play
+                        const source = audioContext.createBufferSource();
+                        source.buffer = decodedBuffer;
+                        source.connect(audioContext.destination);
+                        source.start(0);
+                        
+                        this.updateStatus('success', '🔊 AI is responding (alternative method)...');
+                        
+                        // Clean up
+                        source.onended = () => {
+                            this.updateStatus('recording', '🎤 Continue conversation...');
+                        };
+                        
+                    }).catch(decodeError => {
+                        console.error('❌ Audio decode failed:', decodeError);
+                        this.updateStatus('error', 'Audio format not supported by browser');
+                    });
+                    
+                } catch (contextError) {
+                    console.error('❌ Audio context creation failed:', contextError);
+                    this.updateStatus('error', 'Browser audio support issue');
+                }
+            }
+            
+            // Queue-based audio playback system
+            async processAudioQueue() {
+                if (this.audioQueue.length === 0 || this.isPlaying) {
+                    return;
+                }
+                
+                this.isPlaying = true;
+                const audioBuffer = this.audioQueue.shift();
+                
+                console.log(`🎵 Playing audio from queue. Remaining: ${this.audioQueue.length}`);
+                
+                // CRITICAL: Pause recording during AI response to prevent feedback loop
+                this.pauseRecording();
+                
+                try {
+                    // Try direct Web Audio API playback first (most reliable)
+                    await this.playAudioWithWebAudio(audioBuffer);
+                } catch (error) {
+                    console.log('🔄 Web Audio failed, trying HTML5 audio element...');
+                    try {
+                        await this.playAudioWithHTML5(audioBuffer);
+                    } catch (html5Error) {
+                        console.error('❌ All playback methods failed:', html5Error);
+                        this.updateStatus('error', 'Audio playback failed');
+                    }
+                }
+                
+                // Resume recording after AI response
+                this.resumeRecording();
+                
+                // Continue with next audio in queue
+                this.isPlaying = false;
+                if (this.audioQueue.length > 0) {
+                    // Small delay to prevent overlapping
+                    setTimeout(() => this.processAudioQueue(), 100);
+                }
+            }
+            
+            async playAudioWithWebAudio(audioBuffer) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        // Create new audio context for each audio chunk
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        
+                        // OpenAI sends raw PCM16 audio at 24kHz - we need to convert it
+                        console.log('🔄 Converting OpenAI raw audio to playable format...');
+                        
+                        // Convert ArrayBuffer to Int16Array (PCM16)
+                        const int16Array = new Int16Array(audioBuffer);
+                        console.log('📊 Audio data: Int16 samples:', int16Array.length, 'Sample rate: 24kHz');
+                        
+                        // Create Float32Array for Web Audio API (normalized -1 to 1)
+                        const float32Array = new Float32Array(int16Array.length);
+                        for (let i = 0; i < int16Array.length; i++) {
+                            // Convert Int16 (-32768 to 32767) to Float32 (-1 to 1)
+                            float32Array[i] = int16Array[i] / 32768.0;
+                        }
+                        
+                        // Create AudioBuffer with correct sample rate
+                        const audioBuffer2 = audioContext.createBuffer(1, float32Array.length, 24000);
+                        audioBuffer2.getChannelData(0).set(float32Array);
+                        
+                        console.log('✅ Raw audio converted successfully');
+                        
+                        // Create buffer source and play
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer2;
+                        
+                        // CRITICAL: Add gain control and echo cancellation
+                        const gainNode = audioContext.createGain();
+                        gainNode.gain.value = 0.8; // Reduce volume to minimize feedback
+                        
+                        // Connect: source -> gain -> destination
+                        source.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        // Set up completion handler
+                        source.onended = () => {
+                            console.log('✅ Web Audio playback completed');
+                            audioContext.close();
+                            resolve();
+                        };
+                        
+                        // Start playback
+                        source.start(0);
+                        this.updateStatus('success', '🔊 AI is responding...');
+                        
+                    } catch (contextError) {
+                        console.error('❌ Audio context creation failed:', contextError);
+                        reject(contextError);
+                    }
+                });
+            }
+            
+            async playAudioWithHTML5(audioBuffer) {
+                return new Promise((resolve, reject) => {
+                    try {
+                        // OpenAI sends raw PCM16 - convert to WAV format for HTML5 compatibility
+                        console.log('🔄 Converting raw audio to WAV format for HTML5...');
+                        
+                        // Convert to WAV format (PCM16, 24kHz, mono)
+                        const wavBuffer = this.convertToWAV(audioBuffer, 24000, 1);
+                        
+                        // Create blob with WAV type
+                        const audioBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        
+                        console.log('✅ WAV conversion complete, blob size:', audioBlob.size);
+                        
+                        // Create temporary audio element
+                        const tempAudio = new Audio();
+                        tempAudio.src = audioUrl;
+                        
+                        tempAudio.onloadeddata = () => {
+                            console.log('✅ HTML5 audio loaded, starting playback...');
+                            tempAudio.play().then(() => {
+                                this.updateStatus('success', '🔊 AI is responding (HTML5)...');
+                            }).catch(playError => {
+                                console.error('❌ HTML5 play failed:', playError);
+                                reject(playError);
+                            });
+                        };
+                        
+                        tempAudio.onended = () => {
+                            console.log('✅ HTML5 audio playback completed');
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        
+                        tempAudio.onerror = (error) => {
+                            console.error('❌ HTML5 audio error:', error);
+                            URL.revokeObjectURL(audioUrl);
+                            reject(error);
+                        };
+                        
+                        // Load the audio
+                        tempAudio.load();
+                        
+                    } catch (error) {
+                        console.error('❌ HTML5 audio setup failed:', error);
+                        reject(error);
+                    }
+                });
+            }
+            
+            convertToWAV(audioBuffer, sampleRate, channels) {
+                // Convert raw PCM16 to WAV format
+                const int16Array = new Int16Array(audioBuffer);
+                const dataLength = int16Array.length * 2; // 2 bytes per Int16
+                const bufferLength = 44 + dataLength; // WAV header (44 bytes) + data
+                
+                const buffer = new ArrayBuffer(bufferLength);
+                const view = new DataView(buffer);
+                
+                // WAV header
+                const writeString = (offset, string) => {
+                    for (let i = 0; i < string.length; i++) {
+                        view.setUint8(offset + i, string.charCodeAt(i));
+                    }
+                };
+                
+                // RIFF header
+                writeString(0, 'RIFF');
+                view.setUint32(4, bufferLength - 8, true);
+                writeString(8, 'WAVE');
+                
+                // fmt chunk
+                writeString(12, 'fmt ');
+                view.setUint32(16, 16, true); // fmt chunk size
+                view.setUint16(20, 1, true); // PCM format
+                view.setUint16(22, channels, true); // mono
+                view.setUint32(24, sampleRate, true); // sample rate
+                view.setUint32(28, sampleRate * channels * 2, true); // byte rate
+                view.setUint16(32, channels * 2, true); // block align
+                view.setUint16(34, 16, true); // bits per sample
+                
+                // data chunk
+                writeString(36, 'data');
+                view.setUint32(40, dataLength, true);
+                
+                // Copy audio data
+                const dataView = new DataView(buffer, 44);
+                for (let i = 0; i < int16Array.length; i++) {
+                    dataView.setInt16(i * 2, int16Array[i], true);
+                }
+                
+                console.log('✅ WAV conversion complete. Header size: 44, Data size:', dataLength);
+                return buffer;
+            }
+            
+            pauseRecording() {
+                if (this.audioStream && this.isRecording) {
+                    console.log('🔇 Pausing microphone recording to prevent feedback...');
+                    this.audioStream.getTracks().forEach(track => track.enabled = false);
+                    this.recordingPaused = true;
+                    this.updateStatus('info', '🔇 Recording paused during AI response...');
+                }
+            }
+            
+            resumeRecording() {
+                if (this.audioStream && this.isRecording && this.recordingPaused) {
+                    console.log('🔊 Resuming microphone recording...');
+                    this.audioStream.getTracks().forEach(track => track.enabled = true);
+                    this.recordingPaused = false;
+                    this.updateStatus('recording', '🎤 Continue conversation...');
+                }
+            }
+            
+            updateStatus(type, message) {
+                this.status.className = `status ${type}`;
+                
+                if (type === 'info' && message.includes('Connecting')) {
+                    this.status.innerHTML = `<div class="loading"></div>${message}`;
+                } else {
+                    this.status.textContent = message;
+                }
+            }
+            
+            cleanup() {
+                if (this.isRecording) {
+                    this.stopRecording();
+                }
+            }
+        }
+        
+        // Initialize the client when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 IAC Realtime AI Client v2.0 - Audio Playback Enhanced');
+            console.log('📅 Build timestamp:', new Date().toISOString());
+            console.log('🔧 Cache-busting version:', Math.random().toString(36).substr(2, 9));
+            
+            // Force reload if old version detected
+            if (typeof window.RealtimeAIClient === 'undefined') {
+                console.log('🔄 Loading new client version...');
+                new RealtimeAIClient();
+            } else {
+                console.log('⚠️ Old client detected, forcing reload...');
+                window.location.reload(true);
+            }
+        });
+    </script>
+</body>
+</html>
