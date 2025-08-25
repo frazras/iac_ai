@@ -1,241 +1,276 @@
-# 🚀 Deployment Guide for De-escalation Training Platform
+# IAC Realtime AI - Deployment Guide
 
-## **Overview**
-This guide covers deploying the IAC Realtime AI service for integration with your Articulate Storyline de-escalation training platform.
+This guide covers deploying the IAC Realtime AI system for de-escalation training.
 
-## **Prerequisites**
-- Docker and Docker Compose installed
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker and Docker Compose
 - OpenAI API key with Realtime API access
-- Network access to the deployment server
-- Storyline platform ready for integration
+- Port 8000 available (configurable)
 
-## **Quick Deployment**
-
-### **1. Environment Setup**
+### 1. Clone and Setup
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+git clone <repository-url>
 cd iac_realtime_ai
+```
 
-# Create environment file
+### 2. Configure Environment
+```bash
+# Copy the environment template
 cp .env.example .env
 
-# Edit .env with your OpenAI API key
-OPENAI_API_KEY=sk-your-actual-api-key-here
-LOG_LEVEL=info
+# Edit .env and add your OpenAI API key
+OPENAI_API_KEY=your_actual_openai_api_key_here
 ```
 
-### **2. Build and Deploy**
+### 3. Build and Run
 ```bash
-# Build and start the service
+# Build and start the application
+docker-compose up --build
+
+# Or run in detached mode
 docker-compose up --build -d
-
-# Check status
-docker-compose ps
-docker-compose logs -f iac-realtime-ai
 ```
 
-### **3. Verify Deployment**
+### 4. Access the Application
+Open your browser and navigate to:
+```
+http://localhost:8000
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `OPENAI_API_KEY` | Your OpenAI API key | - | ✅ |
+| `PORT` | Application port | 8000 | ❌ |
+| `LOG_LEVEL` | Logging level | info | ❌ |
+
+### Audio Configuration
+
+**OpenAI Realtime API Settings**:
+- Sample Rate: 24kHz
+- Format: PCM16
+- Channels: Mono
+- Voice: Alloy (configurable)
+
+## 🐳 Docker Deployment
+
+### Production Docker Compose
+```yaml
+version: '3.8'
+services:
+  iac-realtime-ai:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+### Manual Docker Build
 ```bash
-# Health check
-curl http://localhost:8000/health
+# Build the image
+docker build -t iac-realtime-ai .
 
-# Training endpoints
-curl http://localhost:8000/api/training/scenarios
+# Run the container
+docker run -d \
+  --name iac-realtime-ai \
+  -p 8000:8000 \
+  -e OPENAI_API_KEY=your_key_here \
+  iac-realtime-ai
 ```
 
-## **Storyline Integration**
+## 🌐 Production Deployment
 
-### **1. Update Your Storyline Project**
-Replace your existing `user.js` with the new `storyline_user.js` from this repository.
-
-### **2. Include Integration Script**
-Add this to your Storyline HTML:
-```html
-<script src="storyline_integration.js"></script>
-```
-
-### **3. Update WebSocket URL**
-In `storyline_user.js`, update the WebSocket URL to match your deployment:
-```javascript
-window.storylineAI = new StorylineRealtimeAI({
-    websocketUrl: 'ws://your-server-ip:8000/api/ws/speech',
-    autoConnect: true
-});
-```
-
-## **Production Deployment**
-
-### **1. Production Environment Variables**
-```bash
-# .env for production
-OPENAI_API_KEY=sk-your-production-key
-LOG_LEVEL=warning
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
-HTTPS_ENABLED=true
-```
-
-### **2. Reverse Proxy Setup (Nginx)**
+### 1. Reverse Proxy Setup (Nginx)
 ```nginx
 server {
     listen 80;
-    server_name yourdomain.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name yourdomain.com;
-    
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
+    server_name your-domain.com;
     
     location / {
         proxy_pass http://localhost:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 ```
 
-### **3. SSL Certificate Setup**
+### 2. SSL/HTTPS Setup
 ```bash
-# Using Let's Encrypt
-sudo certbot --nginx -d yourdomain.com
+# Install Certbot
+sudo apt install certbot python3-certbot-nginx
 
-# Or manual SSL certificate placement
-sudo cp your-cert.pem /etc/ssl/certs/
-sudo cp your-key.pem /etc/ssl/private/
+# Get SSL certificate
+sudo certbot --nginx -d your-domain.com
+
+# Auto-renewal
+sudo crontab -e
+# Add: 0 12 * * * /usr/bin/certbot renew --quiet
 ```
 
-## **Testing the Integration**
+### 3. Systemd Service (Linux)
+```ini
+[Unit]
+Description=IAC Realtime AI
+After=network.target
 
-### **1. Test WebSocket Connection**
-```javascript
-// In browser console
-const ws = new WebSocket('ws://your-server:8000/api/ws/speech');
-ws.onopen = () => console.log('Connected!');
-ws.onmessage = (e) => console.log('Message:', e.data);
+[Service]
+Type=simple
+User=iac-ai
+WorkingDirectory=/opt/iac-realtime-ai
+Environment=PATH=/opt/iac-realtime-ai/venv/bin
+ExecStart=/opt/iac-realtime-ai/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-### **2. Test Audio Recording**
-```javascript
-// Test microphone access
-navigator.mediaDevices.getUserMedia({audio: true})
-  .then(stream => console.log('Microphone access granted'))
-  .catch(err => console.error('Microphone access denied:', err));
-```
+## 📊 Monitoring
 
-### **3. Test AI Response**
-Start recording and speak for a few seconds. You should hear the AI respond within 1-2 seconds.
-
-## **Monitoring and Troubleshooting**
-
-### **1. Check Service Status**
+### Health Checks
 ```bash
-# Service status
-docker-compose ps
+# Application health
+curl http://localhost:8000/health
 
-# Real-time logs
-docker-compose logs -f iac-realtime-ai
-
-# Check OpenAI connection
-docker-compose logs iac-realtime-ai | grep "OpenAI"
-```
-
-### **2. Common Issues**
-
-**WebSocket Connection Failed**
-- Check firewall settings
-- Verify port 8000 is open
-- Check if service is running
-
-**No AI Response**
-- Verify OpenAI API key is valid
-- Check OpenAI API quota
-- Review server logs for errors
-
-**Audio Quality Issues**
-- Ensure 24kHz sample rate
-- Check microphone permissions
-- Verify PCM16 audio format
-
-### **3. Performance Monitoring**
-```bash
-# Monitor resource usage
-docker stats iac-realtime-ai
-
-# Check WebSocket connections
+# WebSocket service health
 curl http://localhost:8000/api/ws/health
 ```
 
-## **Scaling Considerations**
+### Log Monitoring
+```bash
+# View application logs
+docker-compose logs -f iac-realtime-ai
 
-### **1. Multiple Instances**
-```yaml
-# docker-compose.yml
-services:
-  iac-realtime-ai:
-    deploy:
-      replicas: 3
-    environment:
-      - REDIS_URL=redis://redis:6379
+# View specific log levels
+docker-compose logs -f --tail=100 iac-realtime-ai | grep ERROR
 ```
 
-### **2. Load Balancer**
-Use a load balancer (HAProxy, Nginx) to distribute WebSocket connections across multiple instances.
+### Performance Metrics
+Monitor these key metrics:
+- Active WebSocket connections
+- OpenAI API response times
+- Audio processing latency
+- Connection success/failure rates
 
-### **3. Database Integration**
-For production use, consider adding:
-- User session management
-- Training history storage
-- Performance analytics
+## 🔒 Security
 
-## **Security Considerations**
+### Production Security Checklist
+- [ ] Use HTTPS/WSS in production
+- [ ] Restrict CORS origins to your domain
+- [ ] Store API keys in secure environment variables
+- [ ] Implement rate limiting
+- [ ] Add authentication if needed
+- [ ] Regular security updates
 
-### **1. API Key Security**
-- Never commit API keys to version control
-- Use environment variables or secrets management
-- Rotate keys regularly
+### CORS Configuration
+```python
+# In production, restrict origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://yourdomain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
 
-### **2. Network Security**
-- Use HTTPS/WSS in production
-- Implement rate limiting
-- Restrict CORS origins
-- Add authentication if needed
+## 🚨 Troubleshooting
 
-### **3. Data Privacy**
-- Ensure compliance with training data regulations
-- Implement data retention policies
-- Secure audio data transmission
+### Common Issues
 
-## **Support and Maintenance**
+**1. "Failed to connect to OpenAI"**
+- Verify your OpenAI API key is correct
+- Ensure you have Realtime API access
+- Check internet connectivity
 
-### **1. Regular Updates**
+**2. Connection drops frequently**
+- Check network stability
+- Verify WebSocket proxy settings if behind a proxy
+- Monitor application logs for errors
+
+**3. High memory usage**
+- Monitor container resource usage
+- Consider increasing memory limits
+- Check for memory leaks in long-running connections
+
+### Debug Mode
 ```bash
-# Update dependencies
-docker-compose pull
+# Enable verbose logging
+LOG_LEVEL=debug docker-compose up
+
+# View detailed logs
+docker-compose logs -f --tail=100 iac-realtime-ai
+```
+
+## 📈 Scaling
+
+### Horizontal Scaling
+The WebSocket architecture supports multiple instances:
+- Each connection maintains its own OpenAI service
+- Stateless design allows for load balancing
+- Use Redis for session sharing if needed
+
+### Load Balancer Configuration
+```nginx
+upstream iac_ai_backend {
+    server 127.0.0.1:8001;
+    server 127.0.0.1:8002;
+    server 127.0.0.1:8003;
+}
+
+server {
+    location / {
+        proxy_pass http://iac_ai_backend;
+        # ... other proxy settings
+    }
+}
+```
+
+## 🔄 Updates
+
+### Updating the Application
+```bash
+# Pull latest changes
+git pull origin main
+
+# Rebuild and restart
+docker-compose down
 docker-compose up --build -d
 
-# Check for security updates
-docker-compose exec iac-realtime-ai pip list --outdated
+# Verify deployment
+curl http://localhost:8000/health
 ```
 
-### **2. Backup Strategy**
-- Backup environment configuration
-- Backup training scenarios
-- Document customizations
+### Zero-Downtime Updates
+```bash
+# Build new image
+docker build -t iac-realtime-ai:new .
 
-### **3. Monitoring Setup**
-- Set up log aggregation
-- Configure alerting for service failures
-- Monitor OpenAI API usage and costs
+# Update one container at a time
+docker-compose up -d --no-deps --scale iac-realtime-ai=2
+docker-compose up -d --no-deps --scale iac-realtime-ai=1
+```
 
 ---
 
-**Need Help?** Check the troubleshooting section in the main README or create an issue in the repository.
+**Note**: This deployment guide covers the working features of the IAC Realtime AI system. For additional configuration options, refer to the main README.md file.
