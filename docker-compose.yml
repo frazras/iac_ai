@@ -7,16 +7,18 @@ services:
       dockerfile: Dockerfile
     container_name: iac_realtime_ai
     ports:
-      - "8000:8000"
+      # Use conditional port mapping based on SERVER_ENV
+      # Development: 8000:8000 (localhost)
+      # Production: 8080:8000 (ai.iaclearning.com:8080)
+      - "${SERVER_PORT:-8000}:8000"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - PYTHONPATH=/app
-      - LOG_LEVEL=info
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SERVER_ENV=${SERVER_ENV:-dev}
+      - SERVER_PORT=${SERVER_PORT:-8000}
     env_file:
       - .env
-    volumes:
-      # Mount logs directory for persistent logging
-      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

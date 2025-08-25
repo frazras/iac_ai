@@ -10,7 +10,9 @@
 
 // AI Service Configuration
 const AI_SERVICE_CONFIG = {
-    // WebSocket URL for the AI service (change this for production)
+    // WebSocket URL for the AI service
+    // PRODUCTION: Use 'ws://ai.iaclearning.com:8080/api/ws/speech' 
+    // DEVELOPMENT: Use 'ws://localhost:8000/api/ws/speech'
     websocketUrl: 'ws://localhost:8000/api/ws/speech',
     
     // Auto-connect to AI service on page load
@@ -19,6 +21,23 @@ const AI_SERVICE_CONFIG = {
     // Enable debug logging (set to false for production)
     debugMode: false
 };
+
+// ============================================================================
+// PRODUCTION CONFIGURATION EXAMPLE
+// ============================================================================
+// 
+// For production deployment to ai.iaclearning.com:8080, change the config to:
+//
+// const AI_SERVICE_CONFIG = {
+//     websocketUrl: 'ws://ai.iaclearning.com:8080/api/ws/speech',
+//     autoConnect: true,
+//     debugMode: false
+// };
+//
+// For HTTPS sites, use wss:// instead:
+// websocketUrl: 'wss://ai.iaclearning.com/api/ws/speech'
+//
+// ============================================================================
 
 // ============================================================================
 // DEBUG CONFIGURATION

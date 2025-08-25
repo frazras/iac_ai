@@ -31,10 +31,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS for development
+# Configure CORS based on environment
+server_env = os.getenv("SERVER_ENV", "dev").lower()
+
+if server_env == "prod":
+    # Production CORS - restrict to specific domains
+    allowed_origins = [
+        "https://iaclearning.com",
+        "https://*.iaclearning.com",
+        "http://ai.iaclearning.com:8080",
+        "https://ai.iaclearning.com",
+        # Add your LMS or course hosting domains here
+        "https://lms.iaclearning.com",
+        "https://training.iaclearning.com"
+    ]
+    logger.info(f"Production CORS enabled for origins: {allowed_origins}")
+else:
+    # Development CORS - allow all
+    allowed_origins = ["*"]
+    logger.info("Development CORS enabled for all origins")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -140,23 +159,39 @@ async def legacy_process_endpoint(
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     """Serve a simple welcome page for the API."""
+    server_env = os.getenv("SERVER_ENV", "dev").lower()
+    server_port = os.getenv("SERVER_PORT", "8000")
+    
+    # Set WebSocket URL based on environment
+    if server_env == "prod":
+        ws_url = f"ws://ai.iaclearning.com:{server_port}/api/ws/speech"
+        env_badge = "🚀 PRODUCTION"
+        env_color = "#28a745"
+    else:
+        ws_url = f"ws://localhost:{server_port}/api/ws/speech"
+        env_badge = "🔧 DEVELOPMENT"
+        env_color = "#ffc107"
+    
     return HTMLResponse(
-        content="""
+        content=f"""
         <html>
             <head>
                 <title>IAC Realtime AI - De-escalation Training</title>
                 <style>
-                    body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-                    h1 { color: #333; }
-                    p { color: #666; }
-                    .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+                    body {{ font-family: Arial, sans-serif; margin: 40px; text-align: center; }}
+                    h1 {{ color: #333; }}
+                    p {{ color: #666; }}
+                    .endpoint {{ background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+                    .env-badge {{ background: {env_color}; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; }}
                 </style>
             </head>
             <body>
                 <h1>🚀 IAC Realtime AI</h1>
                 <p>De-escalation Training System</p>
+                <div class="env-badge">{env_badge}</div>
+                <br>
                 <div class="endpoint">
-                    <strong>WebSocket Endpoint:</strong> ws://localhost:8000/api/ws/speech
+                    <strong>WebSocket Endpoint:</strong> {ws_url}
                 </div>
                 <div class="endpoint">
                     <strong>Health Check:</strong> <a href="/health">/health</a>
@@ -171,10 +206,16 @@ async def read_root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    server_env = os.getenv("SERVER_ENV", "dev").lower()
+    server_port = os.getenv("SERVER_PORT", "8000")
+    
     return {
         "status": "healthy",
         "service": "iac-realtime-ai",
-        "openai_key_configured": bool(os.getenv("OPENAI_API_KEY"))
+        "environment": server_env,
+        "port": server_port,
+        "openai_key_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "cors_mode": "production" if server_env == "prod" else "development"
     }
 
 if __name__ == "__main__":

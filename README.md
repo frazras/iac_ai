@@ -54,22 +54,34 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### Docker Deployment (Recommended)
 
-1. **Build and run with Docker Compose**
+#### Development Deployment
 ```bash
+# Use the development deployment script
+./deploy-dev.sh
+
+# Or manually with environment variables
+export SERVER_ENV=dev
+export SERVER_PORT=8000
 docker-compose up --build
 ```
 
-2. **Or build manually**
+#### Production Deployment
 ```bash
-docker build -t iac-realtime-ai .
-docker run -p 8000:8000 iac-realtime-ai
+# Set your OpenAI API key
+export OPENAI_API_KEY=your_actual_openai_api_key_here
+
+# Use the production deployment script
+./deploy-prod.sh
+
+# Or manually with environment variables
+export SERVER_ENV=prod
+export SERVER_PORT=8080
+docker-compose up --build
 ```
 
-3. **Access the application**
-Open your browser and navigate to:
-```
-http://localhost:8000
-```
+#### Access the Application
+- **Development**: `http://localhost:8000`
+- **Production**: `http://ai.iaclearning.com:8080`
 
 ## 🔌 API Endpoints
 
@@ -105,22 +117,35 @@ The `user.js` file includes a configuration section at the top that you can modi
 ```javascript
 // AI Service Configuration
 const AI_SERVICE_CONFIG = {
-    // WebSocket URL for the AI service (change this for production)
+    // WebSocket URL for the AI service
     websocketUrl: 'ws://localhost:8000/api/ws/speech',
-    
-    // Auto-connect to AI service on page load
     autoConnect: true,
-    
-    // Enable debug logging (set to false for production)
     debugMode: false
 };
 ```
 
-**For Production Deployment:**
-- Change `websocketUrl` to your production server (e.g., `wss://yourdomain.com/api/ws/speech`)
-- Use `wss://` (secure WebSocket) for HTTPS sites
+**Environment-Specific URLs:**
+
+**Development:**
+```javascript
+websocketUrl: 'ws://localhost:8000/api/ws/speech'
+```
+
+**Production (HTTP):**
+```javascript
+websocketUrl: 'ws://ai.iaclearning.com:8080/api/ws/speech'
+```
+
+**Production (HTTPS):**
+```javascript
+websocketUrl: 'wss://ai.iaclearning.com/api/ws/speech'
+```
+
+**Configuration Notes:**
+- Use `ws://` for HTTP sites and `wss://` for HTTPS sites
 - Set `debugMode: false` for production
 - Ensure your server is accessible from your Storyline hosting environment
+- The server automatically configures CORS based on environment
 
 ### Features in user.js
 - **Real-time Speech Recording**: Live audio capture and streaming
@@ -152,8 +177,13 @@ const AI_SERVICE_CONFIG = {
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `OPENAI_API_KEY` | Your OpenAI API key | - | ✅ |
-| `PORT` | Application port | 8000 | ❌ |
+| `SERVER_ENV` | Environment (dev/prod) | dev | ❌ |
+| `SERVER_PORT` | External port mapping | 8000 | ❌ |
 | `LOG_LEVEL` | Logging level | info | ❌ |
+
+**Environment-Specific Settings:**
+- **Development**: `SERVER_ENV=dev` (port 8000, all CORS origins allowed)
+- **Production**: `SERVER_ENV=prod` (port 8080, restricted CORS to iaclearning.com domains)
 
 ### Audio Configuration
 
