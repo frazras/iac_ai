@@ -31,28 +31,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS based on environment
-server_env = os.getenv("SERVER_ENV", "dev").lower()
-
-if server_env == "prod":
-    # Production CORS - restrict to specific domains
-    allowed_origins = [
-        "https://iaclearning.com",
-        "https://*.iaclearning.com",
-        "http://ai.iaclearning.com:8080",
-        "https://ai.iaclearning.com",
-        # Add your LMS or course hosting domains here
-        "https://lms.iaclearning.com",
-        "https://training.iaclearning.com",
-        # Add DigitalOcean App Platform domains
-        "https://*.ondigitalocean.app",
-        "https://dolphin-app-okk9x.ondigitalocean.app"
-    ]
-    logger.info(f"Production CORS enabled for origins: {allowed_origins}")
-else:
-    # Development CORS - allow all
-    allowed_origins = ["*"]
-    logger.info("Development CORS enabled for all origins")
+# Configure CORS - allow all origins for maximum compatibility
+allowed_origins = ["*"]
+logger.info("CORS enabled for all origins - wide open access")
 
 app.add_middleware(
     CORSMiddleware,
