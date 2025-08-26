@@ -43,7 +43,10 @@ if server_env == "prod":
         "https://ai.iaclearning.com",
         # Add your LMS or course hosting domains here
         "https://lms.iaclearning.com",
-        "https://training.iaclearning.com"
+        "https://training.iaclearning.com",
+        # Add DigitalOcean App Platform domains
+        "https://*.ondigitalocean.app",
+        "https://dolphin-app-okk9x.ondigitalocean.app"
     ]
     logger.info(f"Production CORS enabled for origins: {allowed_origins}")
 else:
@@ -164,7 +167,14 @@ async def read_root():
     
     # Set WebSocket URL based on environment
     if server_env == "prod":
-        ws_url = f"ws://ai.iaclearning.com:{server_port}/api/ws/speech"
+        # Check if we're on DigitalOcean App Platform
+        host = os.getenv("HOST", "ai.iaclearning.com")
+        if "ondigitalocean.app" in host:
+            # Use WSS for DigitalOcean App Platform
+            ws_url = f"wss://{host}/api/ws/speech"
+        else:
+            # Use WS for custom domain
+            ws_url = f"ws://{host}:{server_port}/api/ws/speech"
         env_badge = "🚀 PRODUCTION"
         env_color = "#28a745"
     else:
@@ -208,16 +218,36 @@ async def health_check():
     """Health check endpoint."""
     server_env = os.getenv("SERVER_ENV", "dev").lower()
     server_port = os.getenv("SERVER_PORT", "8000")
+    host = os.getenv("HOST", "localhost")
     
     return {
         "status": "healthy",
         "service": "iac-realtime-ai",
         "environment": server_env,
         "port": server_port,
+        "host": host,
+        "websocket_protocol": "wss" if server_env == "prod" and "ondigitalocean.app" in host else "ws",
         "openai_key_configured": bool(os.getenv("OPENAI_API_KEY")),
         "cors_mode": "production" if server_env == "prod" else "development"
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    # Check if we should use SSL
+    use_ssl = os.getenv("USE_SSL", "false").lower() == "true"
+    ssl_keyfile = os.getenv("SSL_KEYFILE", "ssl/key.pem")
+    ssl_certfile = os.getenv("SSL_CERTFILE", "ssl/cert.pem")
+    
+    if use_ssl and os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile):
+        logger.info("Starting with SSL support")
+        uvicorn.run(
+            app, 
+            host="0.0.0.0", 
+            port=8000,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile
+        )
+    else:
+        logger.info("Starting without SSL support")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
