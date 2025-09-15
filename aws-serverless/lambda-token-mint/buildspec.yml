@@ -16,11 +16,7 @@ phases:
   build:
     commands:
       - echo "Creating deployment package for openai-token-mint..."
-      - echo "Current working directory:"
-      - pwd
-      - echo "Directory contents:"
-      - ls -la
-      - cd aws-serverless/lambda-token-mint
+
       - echo "Current working directory:"
       - pwd
       - echo "Directory contents:"
@@ -36,11 +32,6 @@ phases:
   post_build:
     commands:
       - echo "Updating Lambda function openai-token-mint..."
-      - echo "Current working directory:"
-      - pwd
-      - echo "Directory contents:"
-      - ls -la
-      - cd aws-serverless/lambda-token-mint
       - aws lambda update-function-code --function-name openai-token-mint --zip-file fileb://deployment_package.zip --region us-east-2
       - echo "Lambda function updated successfully"
 
