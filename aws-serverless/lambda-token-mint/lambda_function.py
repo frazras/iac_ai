@@ -1,0 +1,160 @@
+"""
+AWS Lambda function for minting ephemeral OpenAI Realtime API tokens.
+No authentication required - public endpoint for testing.
+"""
+
+import json
+import os
+import requests
+from datetime import datetime, timedelta
+import logging
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+def lambda_handler(event, context):
+    """
+    Mint ephemeral OpenAI Realtime API tokens for direct browser connection.
+    
+    This function:
+    1. Calls OpenAI API to create ephemeral session
+    2. Returns short-lived token safe for browser use
+    3. No authentication required (public endpoint)
+    """
+    
+    # Log the request for debugging
+    logger.info(f"Token request received: {json.dumps(event, default=str)}")
+    
+    # CORS headers for browser requests
+    cors_headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Content-Type': 'application/json'
+    }
+    
+    # Handle CORS preflight requests
+    if event.get('httpMethod') == 'OPTIONS' or event.get('requestContext', {}).get('http', {}).get('method') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': json.dumps({'message': 'CORS preflight successful'})
+        }
+    
+    try:
+        # Get OpenAI API key from environment
+        openai_api_key = os.environ.get('OPENAI_API_KEY')
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        
+        # Calculate expiration time (1 hour from now)
+        expires_at = int((datetime.now() + timedelta(hours=1)).timestamp())
+        
+        # Create ephemeral session with OpenAI
+        logger.info("Creating ephemeral session with OpenAI...")
+        
+        response = requests.post(
+            'https://api.openai.com/v1/realtime/sessions',
+            headers={
+                'Authorization': f'Bearer {openai_api_key}',
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'realtime=v1'
+            },
+            json={
+                'model': 'gpt-4o-realtime-preview-2024-10-01',
+                'expires_at': expires_at,
+                'voice': 'alloy'  # Default voice for training
+            },
+            timeout=30  # 30 second timeout
+        )
+        
+        logger.info(f"OpenAI API response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            session_data = response.json()
+            logger.info(f"Session created successfully: {session_data.get('id', 'unknown')}")
+            
+            # Return ephemeral token data
+            return {
+                'statusCode': 200,
+                'headers': cors_headers,
+                'body': json.dumps({
+                    'success': True,
+                    'ephemeralToken': session_data['client_secret']['value'],
+                    'sessionId': session_data['id'],
+                    'expiresAt': session_data['expires_at'],
+                    'model': session_data.get('model', 'gpt-4o-realtime-preview-2024-10-01'),
+                    'voice': session_data.get('voice', 'alloy'),
+                    'message': 'Ephemeral token created successfully'
+                })
+            }
+        else:
+            # Log the error response
+            error_text = response.text
+            logger.error(f"OpenAI API error: {response.status_code} - {error_text}")
+            
+            return {
+                'statusCode': 500,
+                'headers': cors_headers,
+                'body': json.dumps({
+                    'success': False,
+                    'error': 'Failed to create OpenAI session',
+                    'details': f"OpenAI API returned {response.status_code}",
+                    'message': 'Please try again in a few moments'
+                })
+            }
+            
+    except requests.exceptions.Timeout:
+        logger.error("Request to OpenAI API timed out")
+        return {
+            'statusCode': 504,
+            'headers': cors_headers,
+            'body': json.dumps({
+                'success': False,
+                'error': 'Request timeout',
+                'message': 'OpenAI API request timed out, please try again'
+            })
+        }
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error: {str(e)}")
+        return {
+            'statusCode': 502,
+            'headers': cors_headers,
+            'body': json.dumps({
+                'success': False,
+                'error': 'Network error',
+                'message': 'Unable to connect to OpenAI API'
+            })
+        }
+        
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': cors_headers,
+            'body': json.dumps({
+                'success': False,
+                'error': 'Internal server error',
+                'message': 'An unexpected error occurred'
+            })
+        }
+
+# Health check endpoint
+def health_check():
+    """Simple health check for the Lambda function."""
+    return {
+        'statusCode': 200,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps({
+            'status': 'healthy',
+            'service': 'openai-token-mint',
+            'timestamp': datetime.now().isoformat(),
+            'version': '1.0.0'
+        })
+    }
+
