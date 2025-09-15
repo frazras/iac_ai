@@ -6,11 +6,20 @@ phases:
       python: 3.11
     commands:
       - echo "Installing dependencies for OpenAI token mint Lambda..."
+      - echo "Repository root contents:"
+      - ls -la
+      - echo "Navigating to Lambda function directory..."
+      - cd aws-serverless/lambda-token-mint
+      - echo "Lambda directory contents:"
+      - ls -la
       - pip install -r requirements.txt -t lib
   build:
     commands:
       - echo "Creating deployment package for openai-token-mint..."
-      - echo "Current directory contents:"
+      - cd aws-serverless/lambda-token-mint
+      - echo "Current working directory:"
+      - pwd
+      - echo "Directory contents:"
       - ls -la
       - echo "Building deployment package..."
       - cp lambda_function.py lib/
@@ -23,9 +32,10 @@ phases:
   post_build:
     commands:
       - echo "Updating Lambda function openai-token-mint..."
+      - cd aws-serverless/lambda-token-mint
       - aws lambda update-function-code --function-name openai-token-mint --zip-file fileb://deployment_package.zip --region us-east-2
       - echo "Lambda function updated successfully"
 
 artifacts:
   files:
-    - deployment_package.zip
+    - aws-serverless/lambda-token-mint/deployment_package.zip
