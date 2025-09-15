@@ -10,13 +10,20 @@ phases:
   build:
     commands:
       - echo "Creating deployment package for openai-token-mint..."
-      - cd lib && zip -r9 ../deployment_package.zip . && cd ..
-      - zip -g deployment_package.zip lambda_function.py
+      - echo "Current directory contents:"
+      - ls -la
+      - echo "Building deployment package..."
+      - cp lambda_function.py lib/
+      - cd lib
+      - zip -r9 ../deployment_package.zip .
+      - cd ..
       - echo "Deployment package created successfully"
+      - echo "Package contents:"
+      - unzip -l deployment_package.zip
   post_build:
     commands:
       - echo "Updating Lambda function openai-token-mint..."
-      - aws lambda update-function-code --function-name openai-token-mint --zip-file fileb://deployment_package.zip
+      - aws lambda update-function-code --function-name openai-token-mint --zip-file fileb://deployment_package.zip --region us-east-2
       - echo "Lambda function updated successfully"
 
 artifacts:
