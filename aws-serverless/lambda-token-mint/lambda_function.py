@@ -48,10 +48,7 @@ def lambda_handler(event, context):
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set")
         
-        # Calculate expiration time (1 hour from now)
-        expires_at = int((datetime.now() + timedelta(hours=1)).timestamp())
-        
-        # Create ephemeral session with OpenAI
+        # Create ephemeral session with OpenAI (no expires_at parameter)
         logger.info("Creating ephemeral session with OpenAI...")
         
         response = requests.post(
@@ -63,7 +60,6 @@ def lambda_handler(event, context):
             },
             json={
                 'model': 'gpt-4o-realtime-preview-2024-10-01',
-                'expires_at': expires_at,
                 'voice': 'alloy'  # Default voice for training
             },
             timeout=30  # 30 second timeout
@@ -83,7 +79,7 @@ def lambda_handler(event, context):
                     'success': True,
                     'ephemeralToken': session_data['client_secret']['value'],
                     'sessionId': session_data['id'],
-                    'expiresAt': session_data['expires_at'],
+                    'expiresAt': session_data.get('expires_at', int((datetime.now() + timedelta(hours=1)).timestamp())),
                     'model': session_data.get('model', 'gpt-4o-realtime-preview-2024-10-01'),
                     'voice': session_data.get('voice', 'alloy'),
                     'message': 'Ephemeral token created successfully'
@@ -157,4 +153,5 @@ def health_check():
             'version': '1.0.0'
         })
     }
+
 
