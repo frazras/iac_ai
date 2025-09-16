@@ -10,10 +10,10 @@
 
 // AI Service Configuration
 const AI_SERVICE_CONFIG = {
-    // WebSocket URL for the AI service
-    // PRODUCTION: Use 'ws://ai.iaclearning.com:8080/api/ws/speech' 
-    // DEVELOPMENT: Use 'ws://localhost:8000/api/ws/speech'
-    websocketUrl: 'ws://localhost:8000/api/ws/speech',
+    // Token endpoint for getting ephemeral OpenAI tokens
+    // PRODUCTION: Use your deployed API Gateway endpoint
+    // DEVELOPMENT: Use your local/test API Gateway endpoint
+    tokenEndpoint: 'https://99dqeidak0.execute-api.us-east-2.amazonaws.com/token',
     
     // Auto-connect to AI service on page load
     autoConnect: true,
@@ -26,16 +26,14 @@ const AI_SERVICE_CONFIG = {
 // PRODUCTION CONFIGURATION EXAMPLE
 // ============================================================================
 // 
-// For production deployment to ai.iaclearning.com:8080, change the config to:
+// PRODUCTION CONFIGURATION IS NOW ACTIVE!
 //
-// const AI_SERVICE_CONFIG = {
-//     websocketUrl: 'ws://ai.iaclearning.com:8080/api/ws/speech',
-//     autoConnect: true,
-//     debugMode: false
-// };
+// Current configuration:
+// ✅ tokenEndpoint: 'https://99dqeidak0.execute-api.us-east-2.amazonaws.com/token'
+// ✅ autoConnect: true
+// ✅ debugMode: false (production ready)
 //
-// For HTTPS sites, use wss:// instead:
-// websocketUrl: 'wss://ai.iaclearning.com/api/ws/speech'
+// This new architecture connects DIRECTLY to OpenAI for maximum performance!
 //
 // ============================================================================
 
@@ -50,27 +48,42 @@ const debug = {
     warn: (...args) => AI_SERVICE_CONFIG.debugMode && console.warn('🔍 DEBUG WARN:', ...args)
 };
 
-// Real-time AI integration class - self-contained
+// Direct OpenAI Real-time AI integration class - connects directly to OpenAI
 class StorylineRealtimeAI {
     constructor(config = {}) {
         this.config = {
-            websocketUrl: config.websocketUrl || AI_SERVICE_CONFIG.websocketUrl,
+            tokenEndpoint: config.tokenEndpoint || AI_SERVICE_CONFIG.tokenEndpoint,
             autoConnect: config.autoConnect !== false ? AI_SERVICE_CONFIG.autoConnect : false,
             debugMode: config.debugMode !== undefined ? config.debugMode : AI_SERVICE_CONFIG.debugMode,
             ...config
         };
         
+        // Direct OpenAI connection
         this.websocket = null;
-        this.audioContext = null;
+        this.sessionId = null;
+        this.ephemeralToken = null;
+        
+        // Audio processing
+        this.recordingAudioContext = null;
+        this.playbackAudioContext = null;
         this.isRecording = false;
         this.isConnected = false;
         this.audioStream = null;
         this.audioProcessor = null;
         this.audioSource = null;
+        
+        // Playback queue for seamless audio
+        this.audioQueue = [];
+        this.isPlayingAudio = false;
+        this.nextPlayTime = 0;
+        
+        // Feedback tracking
         this.lastFeedbackReceived = false;
+        this.currentGrade = null;
+        this.currentFeedback = null;
         this.player = null;
         
-        debug.log('StorylineRealtimeAI constructor initialized');
+        debug.log('StorylineRealtimeAI constructor initialized with direct OpenAI connection');
         
         // Initialize
         this.init();
@@ -216,32 +229,154 @@ class StorylineRealtimeAI {
     
     async connect() {
         try {
-            console.log('Connecting to real-time AI service...');
+            console.log('🔐 Getting ephemeral OpenAI token...');
             
-            // Create WebSocket connection
-            this.websocket = new WebSocket(this.config.websocketUrl);
+            // Get ephemeral token from our Lambda function
+            const tokenResponse = await fetch(this.config.tokenEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             
-            this.websocket.onopen = () => {
-                console.log('✅ Connected to IAC Realtime AI');
-                this.isConnected = true;
-            };
+            if (!tokenResponse.ok) {
+                throw new Error(`Token request failed: ${tokenResponse.status}`);
+            }
             
-            this.websocket.onmessage = (event) => {
-                debug.log('WebSocket message received:', event.data);
-                this.handleWebSocketMessage(event);
-            };
+            const tokenData = await tokenResponse.json();
             
-            this.websocket.onclose = () => {
-                console.log('❌ Disconnected from IAC Realtime AI');
-                this.isConnected = false;
-            };
+            if (!tokenData.success) {
+                throw new Error(`Token creation failed: ${tokenData.message}`);
+            }
             
-            this.websocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
+            console.log('✅ Ephemeral token received:', tokenData.sessionId);
+            this.sessionId = tokenData.sessionId;
+            this.ephemeralToken = tokenData.ephemeralToken;
+            
+            // Initialize WebRTC connection to OpenAI Realtime API
+            console.log('🔌 Connecting to OpenAI Realtime API via WebRTC...');
+            await this.initializeWebRTC();
             
         } catch (error) {
-            console.error('Failed to connect:', error);
+            console.error('Failed to connect to OpenAI:', error);
+            throw error;
+        }
+    }
+
+    async initializeWebRTC() {
+        // Create RTCPeerConnection
+        this.peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        // Setup audio elements
+        this.setupAudioElements();
+
+        // Create data channel for signaling (manual turn control)
+        this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
+            ordered: true
+        });
+
+        this.dataChannel.onopen = () => {
+            console.log('📡 WebRTC data channel opened');
+        };
+
+        this.dataChannel.onmessage = (event) => {
+            console.log('📨 Received data channel message:', event.data);
+            // Handle OpenAI events through data channel
+            try {
+                const message = JSON.parse(event.data);
+                this.handleOpenAIEvent(message);
+            } catch (e) {
+                console.warn('Failed to parse data channel message:', e);
+            }
+        };
+
+        // Handle incoming audio stream
+        this.peerConnection.ontrack = (event) => {
+            console.log('📻 Received remote audio stream');
+            if (this.remoteAudio && event.streams[0]) {
+                this.remoteAudio.srcObject = event.streams[0];
+                this.remoteAudio.play().catch(e => console.warn('Audio play failed:', e));
+            }
+        };
+
+        // Handle connection state changes
+        this.peerConnection.onconnectionstatechange = () => {
+            const state = this.peerConnection.connectionState;
+            console.log('🔗 WebRTC connection state:', state);
+            
+            if (state === 'connected') {
+                console.log('✅ Connected to OpenAI Realtime API via WebRTC');
+                this.isConnected = true;
+                this.configureSession();
+            } else if (state === 'disconnected' || state === 'failed') {
+                console.log('❌ Disconnected from OpenAI Realtime API');
+                this.isConnected = false;
+            }
+        };
+
+        // Get user media and add to peer connection
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    sampleRate: 24000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                } 
+            });
+            
+            console.log('🎤 Got user media stream');
+            this.localStream = stream;
+            
+            // Add audio track to peer connection
+            const audioTrack = stream.getAudioTracks()[0];
+            this.peerConnection.addTrack(audioTrack, stream);
+
+            // Create offer
+            const offer = await this.peerConnection.createOffer();
+            await this.peerConnection.setLocalDescription(offer);
+
+            console.log('📤 Sending SDP offer to OpenAI...');
+
+            // Send offer to OpenAI with proper authorization
+            const response = await fetch('https://api.openai.com/v1/realtime', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.ephemeralToken}`,
+                    'Content-Type': 'application/sdp',
+                    'OpenAI-Beta': 'realtime=v1'
+                },
+                body: offer.sdp
+            });
+
+            if (!response.ok) {
+                throw new Error(`WebRTC signaling failed: ${response.status} ${response.statusText}`);
+            }
+
+            const answerSdp = await response.text();
+            console.log('📥 Received SDP answer from OpenAI');
+
+            // Set remote description
+            await this.peerConnection.setRemoteDescription({
+                type: 'answer',
+                sdp: answerSdp
+            });
+
+        } catch (error) {
+            console.error('WebRTC initialization failed:', error);
+            throw error;
+        }
+    }
+
+    setupAudioElements() {
+        // Create remote audio element if it doesn't exist
+        if (!this.remoteAudio) {
+            this.remoteAudio = document.createElement('audio');
+            this.remoteAudio.autoplay = true;
+            this.remoteAudio.style.display = 'none';
+            document.body.appendChild(this.remoteAudio);
         }
     }
     
@@ -315,37 +450,28 @@ class StorylineRealtimeAI {
             console.log('🛑 Stopping recording...');
             this.isRecording = false;
             
-            // Clean up RECORDING audio resources only
-            if (this.audioProcessor) {
-                this.audioProcessor.disconnect();
-                this.audioProcessor = null;
-            }
-            if (this.audioSource) {
-                this.audioSource.disconnect();
-                this.audioSource = null;
-            }
-            if (this.recordingAudioContext) {
-                this.recordingAudioContext.close();
-                this.recordingAudioContext = null;
-            }
-            if (this.audioStream) {
-                this.audioStream.getTracks().forEach(track => track.stop());
-                this.audioStream = null;
-            }
+            // For manual start/stop UX, we need to signal OpenAI that user finished speaking
+            // With WebRTC, we can send a message through data channel or use turn detection override
+            this.signalEndOfUserInput();
             
-            // Keep playback audio context alive for AI response
-            debug.log('Playback audio context preserved for AI response');
-            
-            // Commit audio buffer to get AI response
-            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-                this.websocket.send(JSON.stringify({ type: 'commit_audio' }));
-                debug.log('Audio buffer committed to AI');
-            }
-            
-            console.log('✅ Recording stopped');
+            console.log('✅ Recording stopped, AI processing...');
             
         } catch (error) {
             console.error('Failed to stop recording:', error);
+        }
+    }
+
+    signalEndOfUserInput() {
+        // Send response.create event through WebRTC data channel to trigger OpenAI response
+        if (this.dataChannel && this.dataChannel.readyState === 'open') {
+            const responseEvent = {
+                type: 'response.create'
+            };
+            
+            this.dataChannel.send(JSON.stringify(responseEvent));
+            debug.log('📤 Sent response.create to OpenAI via data channel');
+        } else {
+            console.warn('Data channel not available for signaling');
         }
     }
     
@@ -358,44 +484,31 @@ class StorylineRealtimeAI {
         return pcm16Array.buffer;
     }
     
-    sendAudioChunk(audioData) {
+    async sendAudioChunk(audioData) {
         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            this.websocket.send(audioData);
+            // Convert PCM16 to base64 for OpenAI
+            const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioData)));
+            
+            const audioEvent = {
+                type: 'input_audio_buffer.append',
+                audio: base64Audio
+            };
+            
+            this.websocket.send(JSON.stringify(audioEvent));
+            debug.log('🎵 Audio chunk sent to OpenAI:', audioData.byteLength, 'bytes');
         }
     }
     
-    handleWebSocketMessage(event) {
-        try {
-            if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
-                // Handle audio response
-                debug.log('Detected audio data type:', event.data.constructor.name);
-                this.handleAudioResponse(event.data);
-            } else if (typeof event.data === 'string') {
-                // Handle text response
-                const data = JSON.parse(event.data);
-                this.handleTextMessage(data);
-            } else {
-                debug.log('Unknown message type:', typeof event.data, event.data);
-            }
-        } catch (error) {
-            console.error('Failed to handle WebSocket message:', error);
-        }
+    commitAudioAndGetResponse() {
+        // With WebRTC, audio is streamed continuously and automatically
+        // OpenAI processes the audio in real-time and responds when user stops talking
+        debug.log('📤 Audio streaming via WebRTC - waiting for OpenAI response');
+        
+        // The response will come through the WebRTC audio stream automatically
+        // No manual commit needed with WebRTC approach
     }
     
-    async handleAudioResponse(audioData) {
-        try {
-            const dataSize = audioData.byteLength || audioData.size || 0;
-            debug.log('Received AI audio response:', dataSize, 'bytes');
-            
-            // Convert PCM16 to playable audio format
-            await this.playPCM16Audio(audioData);
-            
-        } catch (error) {
-            console.error('Failed to handle audio response:', error);
-        }
-    }
-
-    async playPCM16Audio(audioData) {
+    playAudioDelta(base64Audio) {
         try {
             // Initialize playback audio context if not already done
             if (!this.playbackAudioContext) {
@@ -405,21 +518,20 @@ class StorylineRealtimeAI {
                 this.nextPlayTime = 0;
             }
 
-            // Resume playback audio context if suspended (required for auto-play policy)
+            // Resume playback audio context if suspended
             if (this.playbackAudioContext.state === 'suspended') {
-                await this.playbackAudioContext.resume();
+                this.playbackAudioContext.resume();
             }
 
-            // Convert blob to array buffer if needed
-            let arrayBuffer;
-            if (audioData instanceof Blob) {
-                arrayBuffer = await audioData.arrayBuffer();
-            } else {
-                arrayBuffer = audioData;
+            // Decode base64 audio
+            const binaryString = atob(base64Audio);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Convert PCM16 data to AudioBuffer directly
-            const int16Array = new Int16Array(arrayBuffer);
+            // Convert PCM16 data to AudioBuffer
+            const int16Array = new Int16Array(bytes.buffer);
             const float32Array = new Float32Array(int16Array.length);
             
             // Convert 16-bit PCM to float32 (-1.0 to 1.0)
@@ -432,9 +544,6 @@ class StorylineRealtimeAI {
             audioBuffer.copyToChannel(float32Array, 0);
 
             // Add to queue for seamless playback
-            if (!this.audioQueue) {
-                this.audioQueue = [];
-            }
             this.audioQueue.push(audioBuffer);
 
             // Start playback if not already playing
@@ -443,9 +552,181 @@ class StorylineRealtimeAI {
             }
 
         } catch (error) {
-            console.error('Failed to play PCM16 audio:', error);
+            console.error('Failed to play audio delta:', error);
         }
     }
+    
+    startSeamlessPlayback() {
+        if (this.isPlayingAudio || this.audioQueue.length === 0) {
+            return;
+        }
+
+        this.isPlayingAudio = true;
+        debug.log('Starting seamless audio playback');
+
+        // Initialize timing for seamless playback
+        const currentTime = this.playbackAudioContext.currentTime;
+        this.nextPlayTime = currentTime + 0.1; // Small buffer
+
+        this.scheduleNextChunk();
+    }
+
+    scheduleNextChunk() {
+        // Check if we have chunks to play
+        if (this.audioQueue.length === 0) {
+            // No more chunks, but keep checking for new ones
+            setTimeout(() => {
+                if (this.audioQueue.length > 0) {
+                    this.scheduleNextChunk();
+                } else if (this.isPlayingAudio) {
+                    // Only stop if no new chunks arrived
+                    this.isPlayingAudio = false;
+                    debug.log('Audio playback complete');
+                }
+            }, 1000);
+            return;
+        }
+
+        const audioBuffer = this.audioQueue.shift();
+        const source = this.playbackAudioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.playbackAudioContext.destination);
+
+        // Schedule to play at the exact right time
+        source.start(this.nextPlayTime);
+        debug.log('Playing audio chunk:', audioBuffer.duration.toFixed(3), 'seconds');
+
+        // Update next play time
+        this.nextPlayTime += audioBuffer.duration;
+
+        // Schedule the next chunk
+        setTimeout(() => this.scheduleNextChunk(), (audioBuffer.duration * 1000) - 100);
+    }
+    
+    processFeedback(transcript) {
+        debug.log('📝 Processing feedback:', transcript);
+        
+        // Extract grade using regex patterns
+        const gradePatterns = [
+            /\*\*rating[:\s]*(\d{1,2})\/10\*\*/i,
+            /rating[:\s]*(\d{1,2})\/10/i,
+            /(\d{1,2})\/10/i,
+            /rating[:\s]*(\d{1,2})/i
+        ];
+        
+        let grade = null;
+        for (const pattern of gradePatterns) {
+            const match = transcript.match(pattern);
+            if (match) {
+                const potentialGrade = parseInt(match[1]);
+                if (potentialGrade >= 1 && potentialGrade <= 10) {
+                    grade = potentialGrade;
+                    break;
+                }
+            }
+        }
+        
+        // Store results
+        this.currentGrade = grade;
+        this.currentFeedback = transcript;
+        this.lastFeedbackReceived = true;
+        
+        // Update Storyline variables
+        this.updateStorylineVariables(grade, transcript);
+        
+        debug.log('📊 Feedback processed - Grade:', grade);
+    }
+    
+    updateStorylineVariables(grade, feedback) {
+        if (this.player) {
+            if (grade !== null) {
+                debug.log('Setting grade to:', grade);
+                try { 
+                    this.player.SetVar('grade', grade); 
+                    debug.log('Grade set successfully:', this.player.GetVar('grade'));
+                } catch (e) { debug.log('Variable grade not found:', e.message); }
+                
+                try { 
+                    const gradeDisplay = `${grade}/10`;
+                    this.player.SetVar('gradeDisplay', gradeDisplay); 
+                    debug.log('GradeDisplay set to:', gradeDisplay);
+                } catch (e) { debug.log('Variable gradeDisplay not found:', e.message); }
+            }
+            
+            if (feedback) {
+                try { 
+                    this.player.SetVar('feedback', feedback); 
+                    debug.log('Feedback set successfully');
+                } catch (e) { debug.log('Variable feedback not found:', e.message); }
+            }
+            
+            // Update status
+            try { 
+                this.player.SetVar('ai_status', 'AI feedback complete'); 
+            } catch (e) { debug.log('Variable ai_status not found:', e.message); }
+        }
+    }
+    
+    handleOpenAIMessage(event) {
+        try {
+            const data = JSON.parse(event.data);
+            this.handleOpenAIEvent(data);
+        } catch (error) {
+            console.error('Failed to handle OpenAI message:', error);
+        }
+    }
+    
+    handleOpenAIEvent(event) {
+        const eventType = event.type;
+        debug.log('📨 OpenAI Event:', eventType, event);
+        
+        switch (eventType) {
+            case 'session.created':
+                debug.log('🎯 Session created:', event.session.id);
+                this.configureSession();
+                break;
+                
+            case 'session.updated':
+                debug.log('✅ Session configured successfully');
+                break;
+                
+            case 'response.audio.delta':
+                // Play audio response chunk
+                if (event.delta) {
+                    this.playAudioDelta(event.delta);
+                }
+                break;
+                
+            case 'response.audio_transcript.done':
+                // Extract feedback and grade from transcript
+                if (event.transcript) {
+                    this.processFeedback(event.transcript);
+                }
+                break;
+                
+            case 'response.done':
+                debug.log('✅ Response complete');
+                this.resetUIAfterResponse();
+                break;
+                
+            case 'error':
+                debug.log('❌ OpenAI API error:', event.error);
+                console.error('OpenAI API error:', event.error);
+                break;
+                
+            default:
+                debug.log('🔍 Unhandled event type:', eventType);
+        }
+    }
+    
+    configureSession() {
+        // With WebRTC, session configuration is handled during the session creation
+        // The instructions and settings are already configured in the Lambda function
+        // when creating the ephemeral session
+        console.log('🎯 Session configured via WebRTC - using server-side configuration');
+        debug.log('🎯 Session configuration complete');
+    }
+    
 
     startSeamlessPlayback() {
         if (this.isPlayingAudio || this.audioQueue.length === 0) {
@@ -547,93 +828,6 @@ class StorylineRealtimeAI {
         }
     }
     
-    handleTextMessage(data) {
-        try {
-            debug.log('Processing text message:', data);
-            
-            if (data.type === 'training_feedback') {
-                console.log('📊 Training feedback received:', data);
-                
-                // Mark that we've received feedback
-                this.lastFeedbackReceived = true;
-                
-                // Update Storyline variables if they exist
-                if (this.player) {
-                    if (data.grade !== null) {
-                        debug.log('About to set grade to:', data.grade);
-                        debug.log('Data received:', JSON.stringify(data));
-                        
-                        try { 
-                            debug.log('Before setting - current grade value:', this.player.GetVar('grade'));
-                            this.player.SetVar('grade', data.grade); 
-                            debug.log('After setting - new grade value:', this.player.GetVar('grade'));
-                        } catch (e) { debug.log('Variable grade not found:', e.message); }
-                        
-                        try { 
-                            debug.log('Before setting - current gradeDisplay value:', this.player.GetVar('gradeDisplay'));
-                            
-                            // Ensure gradeDisplay is always properly formatted
-                            let gradeDisplayValue = '';
-                            if (data.grade !== null && data.grade !== undefined) {
-                                const gradeNum = parseFloat(data.grade);
-                                if (!isNaN(gradeNum) && gradeNum >= 1 && gradeNum <= 10) {
-                                    gradeDisplayValue = `${data.grade}/10`;
-                                } else {
-                                    gradeDisplayValue = 'Invalid grade';
-                                    debug.log('Invalid grade value received:', data.grade);
-                                }
-                            } else {
-                                gradeDisplayValue = 'No grade';
-                                debug.log('Null/undefined grade received');
-                            }
-                            
-                            this.player.SetVar('gradeDisplay', gradeDisplayValue); 
-                            debug.log('After setting - new gradeDisplay value:', this.player.GetVar('gradeDisplay'));
-                        } catch (e) { debug.log('Variable gradeDisplay not found:', e.message); }
-                    } else {
-                        debug.log('Received null grade value');
-                    }
-                    if (data.feedback) {
-                        console.log('💡 Setting feedback:', data.feedback);
-                        try { this.player.SetVar('feedback', data.feedback); } catch (e) { debug.log('Variable feedback not found'); }
-                    }
-                    
-                    // Update status to show feedback received
-                    try { this.player.SetVar('ai_status', 'AI feedback complete'); } catch (e) { debug.log('Variable ai_status not found'); }
-                }
-            } else {
-                debug.log('Other text message type:', data.type);
-            }
-        } catch (error) {
-            console.error('Failed to handle text message:', error);
-        }
-    }
-    
-    requestFeedback() {
-        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            const feedbackRequest = { type: 'get_feedback' };
-            debug.log('Sending feedback request:', feedbackRequest);
-            this.websocket.send(JSON.stringify(feedbackRequest));
-            
-            // Add a fallback timer in case the feedback request fails
-            setTimeout(() => {
-                if (!this.lastFeedbackReceived) {
-                    console.warn('⚠️ Feedback request timeout, trying again...');
-                    this.websocket.send(JSON.stringify({ type: 'get_feedback' }));
-                }
-            }, 5000); // 5 second timeout
-            
-        } else {
-            console.error('❌ WebSocket not connected for feedback request');
-        }
-    }
-    
-    // Method to manually trigger feedback if needed
-    forceFeedbackRequest() {
-        console.log('🔄 Force requesting feedback...');
-        this.lastFeedbackReceived = false;
-        this.requestFeedback();
-    }
     
     // Method to clear resume data and reset grade variables
     clearResumeData() {
@@ -751,9 +945,9 @@ window.InitExecuteScripts = function() {
     var setVar = player.SetVar;
     var getVar = player.GetVar;
 
-    // Initialize real-time AI integration
+    // Initialize real-time AI integration with direct OpenAI connection
     storylineAI = new StorylineRealtimeAI({
-        websocketUrl: AI_SERVICE_CONFIG.websocketUrl,
+        tokenEndpoint: AI_SERVICE_CONFIG.tokenEndpoint,
         autoConnect: AI_SERVICE_CONFIG.autoConnect,
         debugMode: AI_SERVICE_CONFIG.debugMode
     });
