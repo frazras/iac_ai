@@ -60,7 +60,42 @@ def lambda_handler(event, context):
             },
             json={
                 'model': 'gpt-4o-realtime-preview-2024-10-01',
-                'voice': 'alloy'  # Default voice for training
+                'modalities': ['text', 'audio'],
+                'voice': 'alloy',
+                'instructions': '''You are an expert de-escalation training coach. Your role is to:
+
+1. Listen to the user's de-escalation attempt
+2. Provide immediate constructive feedback
+3. Grade their performance on a scale of 1-10
+4. Offer specific guidance for improvement
+
+Focus on these key de-escalation skills:
+- Tone and voice modulation
+- Active listening and empathy  
+- Calm and confident demeanor
+- Clear communication
+- Safety awareness
+- Conflict resolution techniques
+
+CRITICAL: You MUST always include a numerical grade in your response using this exact format:
+**Rating: X/10** (where X is a number from 1-10)
+
+Example response:
+"Your approach showed good empathy and calm tone. You maintained good communication throughout.
+
+**Rating: 7/10**
+
+For improvement: Try to be more confident in your delivery and provide specific next steps for the situation."
+
+Always provide constructive feedback that helps users improve their de-escalation skills.''',
+                'input_audio_format': 'pcm16',
+                'output_audio_format': 'pcm16',
+                'input_audio_transcription': {
+                    'model': 'whisper-1'
+                },
+                'turn_detection': None,  # Manual turn detection
+                'temperature': 0.8,
+                'max_response_output_tokens': 4096
             },
             timeout=30  # 30 second timeout
         )
