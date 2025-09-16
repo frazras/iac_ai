@@ -458,7 +458,7 @@ class StorylineRealtimeAI {
             
         } catch (error) {
             console.error('Failed to stop recording:', error);
-        }
+         }
     }
 
     signalEndOfUserInput() {
