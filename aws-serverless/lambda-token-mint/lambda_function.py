@@ -93,7 +93,12 @@ Always provide constructive feedback that helps users improve their de-escalatio
                 'input_audio_transcription': {
                     'model': 'whisper-1'
                 },
-                'turn_detection': None,  # Manual turn detection
+                'turn_detection': {
+                    'type': 'server_vad',
+                    'threshold': 0.5,
+                    'prefix_padding_ms': 300,
+                    'silence_duration_ms': 500
+                },  # Server-side voice activity detection for WebRTC
                 'temperature': 0.8,
                 'max_response_output_tokens': 4096
             },
