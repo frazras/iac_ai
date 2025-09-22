@@ -123,10 +123,11 @@ Always provide constructive feedback that helps users improve their de-escalatio
         feedback_temperature = dynamic_config.get('feedbackTemperature', 0.8)
         feedback_model = dynamic_config.get('feedbackModel', 'gpt-4o-realtime-preview-2024-10-01')
         
-        # Ensure temperature is within valid range
-        if not isinstance(feedback_temperature, (int, float)) or feedback_temperature < 0 or feedback_temperature > 2:
-            feedback_temperature = 0.8
-            logger.warning(f"Invalid temperature value, using default: {feedback_temperature}")
+        # Ensure temperature is within valid range for OpenAI Realtime API (>= 0.6)
+        if not isinstance(feedback_temperature, (int, float)) or feedback_temperature < 0.6 or feedback_temperature > 2:
+            original_temp = feedback_temperature
+            feedback_temperature = 0.6
+            logger.warning(f"Temperature {original_temp} is invalid for Realtime API (must be >= 0.6). Using minimum: {feedback_temperature}")
         
         # Ensure model is valid for OpenAI Realtime API (speech-to-speech)
         # Only gpt-4o-realtime-preview models support direct speech-to-speech
